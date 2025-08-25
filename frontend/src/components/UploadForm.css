@@ -1,0 +1,423 @@
+/* Import a modern font */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+/* General container styling */
+.upload-container {
+  max-width: 850px;
+  margin: 2rem auto;
+  padding: 2.5rem 3rem;
+  background-color: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  border: 1px solid #e5e7eb;
+}
+
+h1 {
+  text-align: center;
+  color: #111827;
+  margin-top: 0;
+  margin-bottom: 2.5rem;
+  font-size: 2.25rem;
+  font-weight: 700;
+}
+
+/* Form and input styling */
+.selectors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-end;
+  margin-top: 1.5rem;
+}
+.form-group {
+  flex: 1 1 auto; /* Allows flexible sizing based on content */
+  min-width: 200px; /* Prevents controls from becoming too narrow */
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.6rem;
+  font-weight: 500;
+  color: #4b5563;
+  font-size: 0.9rem;
+}
+
+.form-group select {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 1rem;
+  background-color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease-in-out;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.7rem center;
+  background-repeat: no-repeat;
+  background-size: 1.2em 1.2em;
+  padding-right: 2.5rem;
+}
+
+.form-group select:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+  outline: none;
+}
+
+.file-drop-zone {
+  cursor: pointer;
+  text-align: center;
+  border: 2px dashed #d1d5db;
+  color: #6b7280;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 500;
+  transition: background-color 0.2s, border-color 0.2s;
+  border-radius: 12px;
+  width: 100%;
+}
+
+.file-drop-zone:hover {
+  background-color: #f9fafb;
+  border-color: #4f46e5;
+}
+
+/* Year Picker Styles */
+.year-picker-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.year-picker-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background-color: #fff;
+  font-size: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.year-picker-input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+}
+.year-picker-controls {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  display: flex;
+  flex-direction: column;
+}
+.year-picker-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 50%;
+  border: none;
+  background-color: #f9fafb;
+  color: #4b5563;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.year-picker-button:hover {
+  background-color: #f3f4f6;
+}
+.year-picker-button:first-child {
+  border-top-right-radius: 7px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.year-picker-button:last-child {
+  border-bottom-right-radius: 7px;
+}
+
+/* Button styling */
+.button-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 2.5rem;
+}
+
+.button-group button {
+  padding: 14px 20px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.button-group button:disabled {
+  background-color: #d1d5db !important;
+  color: #9ca3af !important;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  border: none;
+}
+
+.upload-button {
+  background-color: #4f46e5;
+  color: #fff;
+}
+
+.upload-button:hover:not(:disabled) {
+  background-color: #4338ca;
+  transform: translateY(-2px);
+}
+
+.download-button {
+  background-color: #f9fafb;
+  color: #1f2937;
+  border: 1px solid #d1d5db;
+}
+
+.download-button:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+  transform: translateY(-2px);
+}
+
+/* Message styling */
+.message {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  text-align: center;
+  border-radius: 8px;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.message.success {
+  background-color: #f0fdf4;
+  color: #15803d;
+  border-color: #a7f3d0;
+}
+
+.message.error {
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+/* Modal styling */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(17, 24, 39, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background-color: #fff;
+  padding: 2rem;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 1000px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal h2 {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  color: #1f2937;
+}
+
+.table-container {
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.modal table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.modal th,
+.modal td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 12px 16px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.modal th {
+  background-color: #f9fafb;
+  font-weight: 600;
+  color: #374151;
+}
+
+.modal tr:last-child td {
+  border-bottom: none;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.modal-actions button {
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.modal-actions .confirm-button {
+  background-color: #4f46e5;
+  color: #fff;
+}
+.modal-actions .confirm-button:hover {
+  background-color: #4338ca;
+}
+
+.modal-actions .cancel-button {
+  background-color: #f3f4f6;
+  color: #1f2937;
+  border: 1px solid #d1d5db;
+}
+
+.modal-actions .cancel-button:hover {
+  background-color: #e5e7eb;
+}
+
+/* Confirmation Modal for Filename */
+.confirmation-modal {
+  background-color: #fff;
+  padding: 2rem;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 450px;
+  text-align: center;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.confirmation-modal p {
+  font-size: 1.1rem;
+  color: #374151;
+  margin-bottom: 1.5rem;
+}
+
+/* Processing Report and Error Table Styles */
+.processing-result {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e5e7eb;
+}
+
+.result-header {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.result-summary {
+  font-size: 1rem;
+  color: #4b5563;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.result-number {
+  font-weight: 700;
+  color: #059669;
+}
+
+.error-summary-section {
+  margin-top: 1.5rem;
+  background-color: #fef2f2;
+  border: 1px solid #fca5a5;
+  padding: 1rem;
+  border-radius: 10px;
+}
+
+.error-header {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #b91c1c;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.error-table-container {
+  overflow-x: auto;
+}
+
+.error-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.error-table th,
+.error-table td {
+  padding: 12px;
+  border: 1px solid #fecaca;
+  text-align: left;
+}
+
+.error-table th {
+  background-color: #ef4444;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+
+.error-table tr:nth-child(even) {
+  background-color: #fee2e2;
+}
+
+.error-table ul {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.error-table li {
+  padding-left: 1.2em;
+  text-indent: -1.2em;
+  color: #991b1b;
+}
+
+.error-table li:before {
+  content: "•";
+  color: #ef4444;
+  font-weight: bold;
+  display: inline-block;
+  width: 1.2em;
+  margin-left: -1.2em;
+}
