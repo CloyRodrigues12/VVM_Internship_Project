@@ -350,16 +350,19 @@ FEES_MAPPING = {
     'Institute': 'institute',
     'Branch': 'branch',
     'Student': 'student',
-    'Fees ID': 'fees_id', #<-- VVA-PrePrimary and RMS only
+    'Fees ID': 'fees_id', 
+    'Fees Id': 'fees_id',#<-- VVA-PrePrimary and RMS only
     'Fees Schedule ID': 'fees_scheduled_id',#<-- VVA-PrePrimary and RMS only
     'E-Mail Address': 'e_mail_address',
     'Mobile Number': 'mobile_number',
     'Standard/Course': 'standard_course',
+    'Standard Course': 'standard_course', #<--RMS 
     'Division': 'division',
     'Roll Number': 'roll_number',
     'Registration Code': 'registration_code',
     'Fee Head': 'fee_head',
     'Due Date ': 'due_date',
+    'Due Date': 'due_date',#<-- RMS only
     'Fees Category': 'fees_category',
     'Total Amount': 'total_amount',
     'Late Payment Charges': 'late_payment_charges',
@@ -371,6 +374,7 @@ FEES_MAPPING = {
     'Receipt Number ': 'receipt_number',
     'RRN ': 'rrn',
     'Student Status ': 'student_status',
+    'Student Status': 'student_status',
     'Payment Status': 'payment_status',
     'Discount Amount': 'discount_amount',
     'Discount Description': 'discount_description',
@@ -379,6 +383,7 @@ FEES_MAPPING = {
     'Fees Paid Date': 'fees_paid_date',
     'Qfix Reference Number': 'qfix_reference_number',
     'Payment Gateway Transaction ID': 'payment_gateway_transaction_id',
+    'Payment Gateway Transaction Id': 'payment_gateway_transaction_id',
     'Bank Reference No': 'bank_reference_no',
     'Payment Option': 'payment_option',
     'Payment Mode': 'payment_mode',

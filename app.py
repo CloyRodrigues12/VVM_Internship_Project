@@ -158,67 +158,70 @@ def read_file(file, file_name, column_map):
 
 def process_and_validate_columns(df, column_map):
     """
-    Processes and validates columns based on the new rules.
-    - If a duplicate column has no data, it's ignored.
-    - If multiple duplicate columns have data, a ValueError is raised.
-    - Renames the columns to the target database names.
-    - Adds missing columns with empty data.
+    Processes and validates columns, correctly handling multiple source columns
+    mapping to a single destination column.
+    - If multiple source columns for a single destination exist, it uses the one with data.
+    - If multiple source columns for a single destination ALL contain data, it raises an error.
+    - Renames columns to the target database names and adds any missing columns.
     """
-    sanitized_mapping = {sanitize_column_name(k): v for k, v in column_map.items()}
-    expected_db_cols = list(column_map.values())
-
-    raw_to_sanitized = {col: sanitize_column_name(col) for col in df.columns}
-    
-    # Map sanitized file columns to their corresponding raw column names
-    sanitized_to_raw_map = {}
-    for raw_col, sanitized_col in raw_to_sanitized.items():
-        if sanitized_col not in sanitized_to_raw_map:
-            sanitized_to_raw_map[sanitized_col] = []
-        sanitized_to_raw_map[sanitized_col].append(raw_col)
+    # --- Step 1: Create a reverse map from destination DB col to a LIST of source cols ---
+    # Example: {'standard_course': ['Standard/Course', 'Standard Course'], ...}
+    db_to_source_map = {}
+    for source_col, db_col in column_map.items():
+        if db_col not in db_to_source_map:
+            db_to_source_map[db_col] = []
+        db_to_source_map[db_col].append(source_col)
 
     final_df = pd.DataFrame()
     errors = []
+    
+    # Get a unique, ordered list of expected database columns
+    expected_db_cols = list(dict.fromkeys(column_map.values()))
 
-    # Iterate through the expected database columns
+    # --- Step 2: Iterate through each unique destination column ---
     for db_col in expected_db_cols:
-        # Find the sanitized key for this database column
-        sanitized_key_list = [k for k, v in sanitized_mapping.items() if v == db_col]
-        if not sanitized_key_list:
+        possible_source_cols = db_to_source_map.get(db_col, [])
+        
+        # Find which of the possible source columns actually exist in the uploaded file
+        source_cols_in_df = [col for col in possible_source_cols if col in df.columns]
+        
+        # If none of the possible source columns are in the file, create an empty column
+        if not source_cols_in_df:
             final_df[db_col] = pd.NA
             continue
-        sanitized_key = sanitized_key_list[0]
+
+        # --- Step 3: From the columns that exist, find which ones actually contain data ---
+        cols_with_data = [
+            col for col in source_cols_in_df
+            if not df[col].dropna().empty
+        ]
         
-        if sanitized_key in sanitized_to_raw_map:
-            candidate_raw_cols = sanitized_to_raw_map[sanitized_key]
-            
-            # Filter for columns that actually contain data
-            cols_with_data = [
-                col for col in candidate_raw_cols
-                if not df[col].dropna().empty
-            ]
-            
-            if len(cols_with_data) > 1:
-                # CONFLICT: Multiple duplicate columns with data
-                error_msg = (
-                    f"Duplicate columns detected that map to '{db_col}'. "
-                    f"The following columns all contain data: {cols_with_data}. "
-                    "Please combine the data into a single column in your file."
-                )
-                errors.append(error_msg)
-                
-            elif len(cols_with_data) == 1:
-                # SUCCESS: A single column has data. Use that one.
-                final_df[db_col] = df[cols_with_data[0]]
-            else:
-                # No columns with data, fill with empty values
-                final_df[db_col] = pd.NA
-        else:
-            # Column was not found in the file, fill with empty values
+        # --- Step 4: Apply the logic ---
+        if len(cols_with_data) > 1:
+            # CONFLICT: More than one source column has data for the same destination
+            error_msg = (
+                f"Conflict for destination column '{db_col}'. "
+                f"The following source columns all contain data: {cols_with_data}. "
+                "Please consolidate the data into one column in your file."
+            )
+            errors.append(error_msg)
+            # Add an empty column to maintain structure despite the error
             final_df[db_col] = pd.NA
 
-    if errors:
-        raise ValueError(", ".join(errors))
+        elif len(cols_with_data) == 1:
+            # SUCCESS: Exactly one column has data, so we use it.
+            final_df[db_col] = df[cols_with_data[0]]
+            
+        else: # len(cols_with_data) == 0
+            # NO CONFLICT: Either one or more source columns exist but are all empty.
+            # We can safely create an empty column.
+            final_df[db_col] = pd.NA
 
+    # If any errors were found during the process, raise them all at once
+    if errors:
+        raise ValueError("\n".join(errors))
+
+    # Ensure the final DataFrame has all expected columns in the correct order
     return final_df.reindex(columns=expected_db_cols)
 
 @app.route('/preview', methods=['POST'])
@@ -291,7 +294,7 @@ def preview_file():
         cols_to_drop = [col for col in final_df.columns if final_df[col].isna().all()]
         final_df = final_df.drop(columns=cols_to_drop)
 
-        date_columns = ['admission_date', 'date_of_birth']
+        date_columns = ['admission_date', 'date_of_birth','due_date','fees_paid_date','settlement_date','refund_date']
         for col in date_columns:
             if col in final_df.columns:
                 final_df[col] = pd.to_datetime(final_df[col], errors='coerce').dt.strftime('%d-%m-%Y').fillna('N/A')
@@ -375,8 +378,15 @@ def upload_file():
                 print(f"Detected and dropped a potential footer row: {last_row.to_dict()}")
                 final_df = final_df.iloc[:-1]
                 
+
         final_df['uploaded_file_id'] = uploaded_file_id
-        final_df = final_df[['uploaded_file_id'] + list(column_map.values())]
+      
+      # Get a UNIQUE, ordered list of database columns from the mapping
+        unique_db_cols = list(dict.fromkeys(column_map.values()))
+
+      # Reorder the DataFrame to match the unique column list for insertion
+        final_df = final_df[['uploaded_file_id'] + unique_db_cols]
+      
         insert_template = ', '.join(['%s'] * len(final_df.columns))
         insert_query = f"""
             INSERT INTO {target_table} ({', '.join(final_df.columns)})
