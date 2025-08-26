@@ -394,8 +394,8 @@ FEES_MAPPING = {
     'Refund Status': 'refund_status',
     'Default Account': 'default_account',
  #--- VVMs- BANK ACCOUNTS ---
-    'VVM online/offline LIVE account': 'vvm_online_offline_live_account',#<-- VVA PrimarySecondarySeniorSecondary only
-    'VVVA Online (Pre Primary) Online/Offline Live Account': 'vvva_online_pre_primary_online_offline_live_account',#<-- VVA-PrePrimary only
+    'VIDYA VIKAS MANDALS online/offline LIVE account': 'vvm_online_offline_live_account',#<-- VVA PrimarySecondarySeniorSecondary only
+    'VIDYA VIKAS ACADEMY PRE PRIMARY ONLINE/OFFLINE LIVE ACCOUNT': 'vva_pre_primary_online_offline_live_account',#<-- VVA-PrePrimary only
      #below accounts  are for SDCCE only
     'VVMS R M SALGAOCAR HIGHER SECONDARY SCHOOL/76503022': 'rms_secondary_school_76503022',#<--- for RMS also 
     'VVMS SHREE DAMODAR COLLEGE OF COMMERCE AND ECONOMICS/76502948': 'sdcce_commerce_economics_76502948',
@@ -435,13 +435,13 @@ FEES_MAPPING = {
     'University Registration Fees': 'university_registration_fees',
     'Laboratory Fees': 'laboratory_fees',
     'University Administration Fees': 'university_administration_fees',
-    'Library & ID Card Fees': 'library_id_card_etc',
+    'Library ID Card etc': 'library_id_card_etc',
     'Computer Lab Fees': 'computer_lab_fees',
     'Information Technology Fees': 'information_technology_fees',
     'IAIMS Fees (DHE)': 'iaims_fees_dhe',
     'IAMS Fees': 'iams_fees',
     'Alumni Registration Fees': 'alumni_registration_fees',
-    'Academic Restructuring & Development Fees': 'academic_restructuring_and_development_fees',
+    'Academic Restructuring and development Fees': 'academic_restructuring_and_development_fees',
     'Magazine Academic Diary and Placement bro': 'magazine_academic_diary_placement_brochure',
     'ID Card Fees': 'id_card_fees',
     'IAIMS Fees': 'iaims_fees',

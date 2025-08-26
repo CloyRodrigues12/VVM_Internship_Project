@@ -51,7 +51,7 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
         return None, None, validation_errors
         
     # --- SDCCE Fees Validation ---
-    if institution_code == 'SDCCE':
+    if institution_code == 'SDCCE' or institution_code == 'GRKCL':
         # 1. Define mandatory fields for SDCCE fees
         mandatory_fields = ['student', 'standard_course']
         
@@ -93,7 +93,7 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
         fees_schedule_id_raw = record.get('fees_schedule_id')
         fees_schedule_id = None
         if not fees_schedule_id_raw:
-            fees_schedule_id = 'NULL'
+            fees_schedule_id = None
         else:
             try:
                 # Corrected: Convert to float first to handle the .0
@@ -107,7 +107,7 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
         # Corrected: A more robust regex that handles multi-part domains like .edu.in
         email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]{2,}$'
         if not email_raw:
-            standardized_email = 'NULL'
+            standardized_email =None
         else:
             email_raw = email_raw.strip()
             if re.match(email_regex, email_raw):
@@ -124,7 +124,7 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
         division_raw = record.get('division')
         standardized_division = None
         division_mapping = {'semester i and ii': '1st Year',
-                             'semester iii and iv': '2nd Year','semester v and vi': '3rd Year',}
+                              'semester iii and iv': '2nd Year','semester v and vi': '3rd Year',}
         if not division_raw:
             standardized_division = None
         else:
@@ -162,11 +162,14 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
             if 'semester' in normalized_fee_head or 'full' in normalized_fee_head:
                 standardized_fee_head = "Full Fees"
             else:
-                # Corrected regex to match full Roman numerals
+                # Regex to match full Roman numerals
                 roman_match = re.search(r'\b(i|ii|iii|iv|v|vi|vii|viii|ix|x)\b', normalized_fee_head)
                 
-                # Check for numerical installments (e.g., 1st, 2nd)
-                numerical_match = re.search(r'(\d+)(st|nd|rd|th)', normalized_fee_head)
+                # Regex for ordinal numbers (e.g., 1st, 2nd)
+                ordinal_match = re.search(r'(\d+)(st|nd|rd|th)', normalized_fee_head)
+
+                # Regex for cardinal numbers after "installment" (e.g., Installment 1)
+                cardinal_match = re.search(r'installment\s+(\d+)', normalized_fee_head)
 
                 if roman_match:
                     roman_numeral = roman_match.group(1).lower()
@@ -175,12 +178,18 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
                         suffix = get_ordinal_suffix(installment_number)
                         standardized_fee_head = f"{installment_number}{suffix} installment"
                     else:
-                        # Fallback for unrecognized Roman numeral (shouldn't happen with this regex)
                         standardized_fee_head = fee_head_raw.strip().title()
-                elif numerical_match:
-                    index = int(numerical_match.group(1))
+                
+                elif ordinal_match:
+                    index = int(ordinal_match.group(1))
                     suffix = get_ordinal_suffix(index)
                     standardized_fee_head = f"{index}{suffix} installment"
+
+                elif cardinal_match:
+                    index = int(cardinal_match.group(1))
+                    suffix = get_ordinal_suffix(index)
+                    standardized_fee_head = f"{index}{suffix} installment"
+                    
                 else:
                     # Final fallback for any other format
                     standardized_fee_head = fee_head_raw.strip().title()
@@ -189,12 +198,77 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
         due_date_raw = record.get('due_date')
         standardized_due_date = None
         if not due_date_raw:
-            validation_errors.append("Due Date is a mandatory field.")
+            standardized_due_date = None
         else:
             try:
                 parsed_date = datetime.strptime(due_date_raw.strip(), '%d/%m/%Y').date()
                 standardized_due_date = parsed_date.strftime('%Y-%m-%d')
             except (ValueError, TypeError):validation_errors.append(f"Invalid Due Date: '{due_date_raw}'. Expected format is DD/MM/YYYY.")
+
+        # Validate 'Fees Paid Date'
+        fees_paid_date_raw = record.get('fees_paid_date')
+        standardized_fees_paid_date = None
+        if fees_paid_date_raw and str(fees_paid_date_raw).strip():
+            try:
+                parsed_date = datetime.strptime(str(fees_paid_date_raw).strip(), '%d/%m/%y').date()
+                # Standardize to YYYY-MM-DD format
+                standardized_fees_paid_date = parsed_date.strftime('%Y-%m-%d')
+            except (ValueError, TypeError):
+                validation_errors.append(f"Invalid Fees Paid Date: '{fees_paid_date_raw}'. Expected format is DD/MM/YY.")
+
+        # Validate and Standardize 'Payment Mode'
+        payment_mode_raw = record.get('payment_mode')
+        standardized_payment_mode = None
+
+        # Only process if a value exists. Blanks will result in None.
+        if payment_mode_raw and str(payment_mode_raw).strip():
+            # Normalize the string for consistent matching
+            normalized_mode = str(payment_mode_raw).strip().upper()
+
+            # Use 'in' to catch variations like 'RUPAY DEBIT CARD'
+            if 'DEBIT CARD' in normalized_mode:
+                standardized_payment_mode = 'DEBIT CARD'
+            elif 'CREDIT CARD' in normalized_mode:
+                standardized_payment_mode = 'CREDIT CARD'
+            elif 'BANK' in normalized_mode:
+                standardized_payment_mode = 'BANK'
+            elif 'UPI' in normalized_mode:
+                standardized_payment_mode = 'UPI'
+            # Ignore placeholder values silently
+            elif normalized_mode in ('PAYMENT MODE',):
+                standardized_payment_mode = None
+            # Any other value is considered an error
+            else:
+                validation_errors.append(f"Invalid or unmapped Payment Mode: '{payment_mode_raw}'.")
+
+            cheque_dd_no = record.get('cheque_dd_no')
+            if not cheque_dd_no or cheque_dd_no=='NULL':
+                cheque_dd_no = 'Not applicable'
+
+
+        # Validate 'Settlement Date'
+        settlement_date_raw = record.get('settlement_date')
+        standardized_settlement_date = None
+        
+        # Get the current date for logical validation
+        current_date = date.today()
+
+        # Process only if a value is present
+        if settlement_date_raw and str(settlement_date_raw).strip():
+            date_str = str(settlement_date_raw).strip()
+            try:
+                # Attempt to parse the string to ensure it's a valid date in YYYY-MM-DD format
+                parsed_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                # Optional but recommended: Check that the settlement date is not in the future
+                if parsed_date > current_date:
+                    validation_errors.append(f"Settlement Date cannot be in the future: '{date_str}'.")
+                else:
+                    # If validation passes, the string is already in the desired format
+                    standardized_settlement_date = date_str
+            except (ValueError, TypeError):
+                # This block catches both invalid formats and non-existent dates (e.g., 2025-02-30)
+                validation_errors.append(f"Invalid Settlement Date: '{date_str}'. Must be a valid date in YYYY-MM-DD format.")
+                
 
         # 3. Check for an exact duplicate row in the master table for SDCCE
         duplicate_check_query = f"""
@@ -205,15 +279,23 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
         cursor.execute(duplicate_check_query, values_for_check)
         
         if cursor.fetchone():
-            validation_errors.append("Error: A record with this exact data already exists in the master table for SDCCE.")
+            validation_errors.append(f"Error: A record with this exact data already exists in the master table for '{institution_code}'.")
             return None, None, validation_errors
         
         # 4. Prepare the insertion query and values for SDCCE
         master_insert_query = f"""
-            INSERT INTO {master_table} (uploaded_file_id, institution_code, institute_name,student_name,course_name,fees_id,email_address,mobile_no,division_name,registration_code,installment_no,due_date)
-            VALUES (%s, %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO {master_table} (uploaded_file_id,fees_table_ref_id, institution_code, institute_name,student_name,course_name,fees_id,email_address,mobile_no,division_name,registration_code,qfix_ref_no,payment_status,installment_no,total_amt,amount_paid,remaining_amount,fees_paid_date,due_date,transaction_id,fees_category,payment_option,payment_mode,payment_details,cheque_dd_no,payment_reference_details,settlement_date,bank_reference_no,late_payment_charges,refund_amount,refund_date,refund_status,rms_secondary_school_76503022,sdcce_commerce_economics_76502948,sdcce_mcom_76502950,sdcce_bba_76502953,sdcce_bcom_nsa_76502893,sdcce_pgdft_76078365,sdcce_b_voc_76502967,
+
+            tuition_fees,university_registration_fees,laboratory_fees,library_fees,gymkhana_fees,university_administration_fees,library_id_card_etc,computer_lab_fees,information_technology_fees,iaims_fees_dhe,other_fees,student_aid_fees,library_deposit,caution_money_deposit,development_fees,examination_fees,pta_fees,iams_fees,alumni_registration_fees,academic_restructuring_and_development_fees,magazine_academic_diary_placement_brochure,id_card_fees,iaims_fees)
+
+            VALUES (%s, %s,%s, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """
-        values = (uploaded_file_id, institution_code, record.get('institute'),standardized_student_name,standard_course,fees_id,standardized_email,standardized_mobile_number,standardized_division,standardized_registration_code,standardized_fee_head,standardized_due_date )
+        values = (
+            uploaded_file_id,'fees_table_ref_id', institution_code, record.get('institute'),standardized_student_name,standard_course,fees_id,standardized_email,standardized_mobile_number,standardized_division,standardized_registration_code,record.get('qfix_reference_number'),record.get('payment_status'),standardized_fee_head,record.get('total_amount'),record.get('paid_amount'),record.get('remaining_amount'),standardized_fees_paid_date,standardized_due_date,record.get('payment_gateway_transaction_id'),record.get('fees_category'), record.get('payment_option'),standardized_payment_mode,record.get('payment_details'),cheque_dd_no,record.get('payment_reference_details'),standardized_settlement_date,record.get('bank_reference_no'),record.get('late_payment_charges'),record.get('refund_amount'),record.get('refund_date'),record.get('refund_status'),record.get('rms_secondary_school_76503022'),record.get('sdcce_commerce_economics_76502948'),record.get('sdcce_mcom_76502950'),record.get('sdcce_bba_76502953'),record.get('sdcce_bcom_nsa_76502893'),record.get('sdcce_pgdft_76078365'),record.get('sdcce_b_voc_76502967'),
+            #fee distribution fields
+            record.get('tuition_fees'),record.get('university_registration_fees'),record.get('laboratory_fees'),record.get('library_fees'),record.get('gymkhana_fees'),record.get('university_administration_fees'),record.get('library_id_card_etc'),record.get('computer_lab_fees'),record.get('information_technology_fees'),record.get('iaims_fees_dhe'),record.get('other_fees'),record.get('student_aid_fees'),record.get('library_deposit'),record.get('caution_money_deposit'),record.get('development_fees'),record.get('examination_fees'),record.get('pta_fees'),
+            record.get('iams_fees'),record.get('alumni_registration_fees'),record.get('academic_restructuring_and_development_fees'),record.get('magazine_academic_diary_placement_brochure'),record.get('id_card_fees'),record.get('iaims_fees')
+            )
         
         return master_insert_query, values, validation_errors
         
