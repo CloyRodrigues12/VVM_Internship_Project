@@ -353,6 +353,7 @@ FEES_MAPPING = {
     'Fees ID': 'fees_id', 
     'Fees Id': 'fees_id',#<-- VVA-PrePrimary and RMS only
     'Fees Schedule ID': 'fees_scheduled_id',#<-- VVA-PrePrimary and RMS only
+    'Fees Schedule Id': 'fees_scheduled_id',
     'E-Mail Address': 'e_mail_address',
     'Mobile Number': 'mobile_number',
     'Standard/Course': 'standard_course',
@@ -393,6 +394,7 @@ FEES_MAPPING = {
     'Bank Branch Name': 'bank_branch_name',
     'IFSC Code': 'ifsc_code',
     'Cheque/DD No': 'cheque_dd_no',
+    'Cheque/DD No.': 'cheque_dd_no',# vva only
     'Settlement Date': 'settlement_date',
     'Refund Amount': 'refund_amount',
     'Refund Date': 'refund_date',
@@ -412,9 +414,10 @@ FEES_MAPPING = {
 
     # -- below are common fee distribution fields
     'Tuition Fees': 'tuition_fees',
+    'Tuition fees': 'tuition_fees',#vva pre primary
     'Term Fees': 'term_fees', #<-- VVA and RMS only
     'Pupils Fund': 'pupils_fund', #<-- RMS only
-    'Activity Fees': 'activity_fees', #<-- VVA PrePrimary only
+    'Activity fees': 'activity_fees', #<-- VVA PrePrimary only
     'Admission Fees': 'admission_fees', #<-- VVA only
     'Registration Fees': 'registration_fees', #<-- VVA PrePrimary only
     'Development Fund': 'development_fund', #<-- VVA PrimarySecondarySeniorSecondary only

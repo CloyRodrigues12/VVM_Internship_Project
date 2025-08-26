@@ -473,6 +473,7 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
                     'NURSERY': 'Nursery',
                     'JUNIOR KG': 'Junior KG',
                     'SENIOR KG': 'Senior KG',
+                    'PLAY GROUP':'Play Group',
                 }
                 if normalized_course in pre_primary_mapping:
                     standardized_course = pre_primary_mapping[normalized_course]
