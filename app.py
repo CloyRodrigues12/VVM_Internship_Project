@@ -159,18 +159,23 @@ def read_file(file, file_name, column_map):
 def process_and_validate_columns(df, column_map):
     """
     Processes and validates columns, correctly handling multiple source columns
-    mapping to a single destination column.
-    - If multiple source columns for a single destination exist, it uses the one with data.
-    - If multiple source columns for a single destination ALL contain data, it raises an error.
+    mapping to a single destination column in a case-insensitive manner.
+    - If multiple source columns for a single destination exist, it merges them by
+      taking the first available non-null value for each row.
     - Renames columns to the target database names and adds any missing columns.
     """
-    # --- Step 1: Create a reverse map from destination DB col to a LIST of source cols ---
-    # Example: {'standard_course': ['Standard/Course', 'Standard Course'], ...}
+    # --- Step 1: Standardize the DataFrame's column names to lowercase ---
+    # Keep a map of original names for error messages
+    original_columns = {col.lower(): col for col in df.columns}
+    df.columns = df.columns.str.lower()
+    
+    # --- Step 2: Create a reverse map from destination DB col to a LIST of lowercase source cols ---
     db_to_source_map = {}
     for source_col, db_col in column_map.items():
+        source_col_lower = source_col.lower()
         if db_col not in db_to_source_map:
             db_to_source_map[db_col] = []
-        db_to_source_map[db_col].append(source_col)
+        db_to_source_map[db_col].append(source_col_lower)
 
     final_df = pd.DataFrame()
     errors = []
@@ -178,11 +183,11 @@ def process_and_validate_columns(df, column_map):
     # Get a unique, ordered list of expected database columns
     expected_db_cols = list(dict.fromkeys(column_map.values()))
 
-    # --- Step 2: Iterate through each unique destination column ---
+    # --- Step 3: Iterate through each unique destination column ---
     for db_col in expected_db_cols:
         possible_source_cols = db_to_source_map.get(db_col, [])
         
-        # Find which of the possible source columns actually exist in the uploaded file
+        # Find which of the possible source columns actually exist in the uploaded file (case-insensitive)
         source_cols_in_df = [col for col in possible_source_cols if col in df.columns]
         
         # If none of the possible source columns are in the file, create an empty column
@@ -190,40 +195,26 @@ def process_and_validate_columns(df, column_map):
             final_df[db_col] = pd.NA
             continue
 
-        # --- Step 3: From the columns that exist, find which ones actually contain data ---
-        cols_with_data = [
-            col for col in source_cols_in_df
-            if not df[col].dropna().empty
-        ]
+        # --- Step 4: Merge data from all found source columns for the current destination ---
+        # Initialize the destination column with data from the first found source column.
+        merged_col = df[source_cols_in_df[0]].copy()
         
-        # --- Step 4: Apply the logic ---
-        if len(cols_with_data) > 1:
-            # CONFLICT: More than one source column has data for the same destination
-            error_msg = (
-                f"Conflict for destination column '{db_col}'. "
-                f"The following source columns all contain data: {cols_with_data}. "
-                "Please consolidate the data into one column in your file."
-            )
-            errors.append(error_msg)
-            # Add an empty column to maintain structure despite the error
-            final_df[db_col] = pd.NA
+        # If there are other source columns, "coalesce" them.
+        # This means for each row, if the value is null, try to fill it with the value
+        # from the next source column.
+        if len(source_cols_in_df) > 1:
+            for next_col in source_cols_in_df[1:]:
+                merged_col.fillna(df[next_col], inplace=True)
+        
+        final_df[db_col] = merged_col
 
-        elif len(cols_with_data) == 1:
-            # SUCCESS: Exactly one column has data, so we use it.
-            final_df[db_col] = df[cols_with_data[0]]
-            
-        else: # len(cols_with_data) == 0
-            # NO CONFLICT: Either one or more source columns exist but are all empty.
-            # We can safely create an empty column.
-            final_df[db_col] = pd.NA
-
-    # If any errors were found during the process, raise them all at once
+    # --- Final check for columns that may still be entirely empty ---
+    # This logic remains the same as before.
     if errors:
         raise ValueError("\n".join(errors))
 
     # Ensure the final DataFrame has all expected columns in the correct order
     return final_df.reindex(columns=expected_db_cols)
-
 @app.route('/preview', methods=['POST'])
 def preview_file():
     """

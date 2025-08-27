@@ -382,7 +382,7 @@ def _validate_and_prepare_student_sdcce(cursor, record, institution_code, master
     duplicate_check_query = f"SELECT 1 FROM {master_table} WHERE institution_code = %s AND admission_no = %s AND is_active = 1"
     cursor.execute(duplicate_check_query, (institution_code, form_number))
     if cursor.fetchone():
-        return None, None, [f"Error: An active record with Admission No '{form_number}' already exists for this institution."]
+        return None, None, [f"Error: An active record with Admission No (FORM NUMBER) '{form_number}' already exists for this institution."]
     
     # --- Deactivate Previous Records ---
     check_query = f"SELECT master_id FROM {master_table} WHERE student_name = %s AND date_of_birth = %s AND is_active = 1"
@@ -401,11 +401,10 @@ def _validate_and_prepare_student_sdcce(cursor, record, institution_code, master
             mobile_number, alt_mobile_number, fathers_mobile_number, mothers_mobile_number, 
             fathers_name, mothers_name, fathers_occupation, mothers_occupation, 
             fathers_occupation_category, mothers_occupation_category, nationality, 
-            name_of_the_institution_attended_earlier, board_name, passing_year, xii_stream, passsing_percentage, 
-            xii_passing_class,  pwd_category_and_Percentage, urban_rural_category
+            name_of_the_institution_attended_earlier, board_name, passing_year, xii_stream,xii_max_marks,xii_marks_obtained,xii_sub_combination, passsing_percentage,xii_passing_class,pwd_category_and_Percentage,urban_rural_category
         ) VALUES (
            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s,%s
         )
     """
     values = (
@@ -416,8 +415,7 @@ def _validate_and_prepare_student_sdcce(cursor, record, institution_code, master
         mobile, alternate_mobile, father_mobile, mother_mobile, father_name, mother_name, 
         record.get('father_occupation'), record.get('mother_occupation'), father_occupation_category, 
         mother_occupation_category, nationality, record.get('xii_name_of_the_institution'), 
-        record.get('xii_board'), xii_passing_year_val, record.get('xii_stream'), xii_percentage, 
-        xii_division, pwd_category_and_percentage, record.get('urban_rural_semi_urban_metro_area')      
+        record.get('xii_board'), xii_passing_year_val, record.get('xii_stream'),record.get('xii_maximum_marks'),record.get('xii_marks_obtained'),record.get('xii_subject_combination'),xii_percentage,xii_division, pwd_category_and_percentage, record.get('urban_rural_semi_urban_metro_area')      
     )
 
     return master_insert_query, values, []
