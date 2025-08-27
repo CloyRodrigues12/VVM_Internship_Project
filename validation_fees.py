@@ -359,6 +359,10 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
                 standardized_payment_mode = 'BANK'
             elif 'UPI' in normalized_mode:
                 standardized_payment_mode = 'UPI'
+            elif 'CASH' in normalized_mode:
+                standardized_payment_mode = 'CASH'
+            elif 'CHEQUE' in normalized_mode:
+                standardized_payment_mode = 'CHEQUE'
             # Ignore placeholder values silently
             elif normalized_mode in ('PAYMENT MODE',):
                 standardized_payment_mode = None
@@ -443,7 +447,7 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
         # Extract the validated institute name
         institute = record.get('institute')
 
-        # --- Validate and standardize 'branch' first ---
+        # --- Validate and standardize 'branch'---
         branch = record.get('branch')
         standardized_branch = None
         is_pre_primary_branch = False
@@ -488,25 +492,127 @@ def _validate_and_prepare_fees_data(cursor, record, uploaded_file_id, master_tab
                         validation_errors.append(f"Invalid course value: '{course}'. For a 'Primary/Secondary' branch, course must be a number from 1 to 12.")
                 except ValueError:
                     validation_errors.append(f"Invalid course value: '{course}'. For a 'Primary/Secondary' branch, course must be a number from 1 to 12.")
+
+
+
+                 # 2. Validate and standardize the student name to accept special characters
+        student_name_raw = record.get('student')
+        standardized_student_name = None
+        if not student_name_raw:
+            validation_errors.append("Student name is a mandatory field.")
+        else:
+            # Check for non-alphabetic characters (excluding spaces, hyphens, and apostrophes)
+            # This allows names like "Jean-Pierre" or "O'Malley"
+            if not isinstance(student_name_raw, str) or re.search(r'[^a-zA-Z\s\'-.]', student_name_raw):
+                validation_errors.append(f"Invalid student name: {student_name_raw}. It must contain only characters, spaces, hyphens, or apostrophes.")
+            else:
+                standardized_student_name = ' '.join(student_name_raw.strip().split()).title()
+
+        email_raw = record.get('e_mail_address')
+        # Corrected: A more robust regex that handles multi-part domains like .edu.in
+        email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]{2,}$'
+        if not email_raw:
+            standardized_email =None
+        else:
+            email_raw = email_raw.strip()
+            if re.match(email_regex, email_raw):
+                standardized_email = email_raw.lower()
+            else:
+                validation_errors.append(f"Invalid email format: '{email_raw}'.")
+
+        mobile_number_raw = record.get('mobile_number')
+        standardized_mobile_number = None
+        standardized_mobile_number, mobile_errors = _validate_and_standardize_phone_number(mobile_number_raw, 'Mobile Number')
+        validation_errors.extend(mobile_errors)
+
+        # Validate and Standardize 'Payment Mode'
+        payment_mode_raw = record.get('payment_mode')
+        standardized_payment_mode = None
+
+        # Only process if a value exists. Blanks will result in None.
+        if payment_mode_raw and str(payment_mode_raw).strip():
+            # Normalize the string for consistent matching
+            normalized_mode = str(payment_mode_raw).strip().upper()
+
+            # Use 'in' to catch variations like 'RUPAY DEBIT CARD'
+            if 'DEBIT CARD' in normalized_mode:
+                standardized_payment_mode = 'DEBIT CARD'
+            elif 'CREDIT CARD' in normalized_mode:
+                standardized_payment_mode = 'CREDIT CARD'
+            elif 'BANK' in normalized_mode:
+                standardized_payment_mode = 'BANK'
+            elif 'UPI' in normalized_mode:
+                standardized_payment_mode = 'UPI'
+            elif 'CASH' in normalized_mode:
+                standardized_payment_mode = 'CASH'
+            elif 'CHEQUE' in normalized_mode:
+                standardized_payment_mode = 'CHEQUE'
+            # Ignore placeholder values silently
+            elif normalized_mode in ('PAYMENT MODE',):
+                standardized_payment_mode = None
+            # Any other value is considered an error
+            else:
+                validation_errors.append(f"Invalid or unmapped Payment Mode: '{payment_mode_raw}'.")
+
+        cheque_dd_no = record.get('cheque_dd_no')
+        if not cheque_dd_no or cheque_dd_no=='NULL':
+            cheque_dd_no = 'Not applicable'
+
+
+        # Validate 'Settlement Date'
+        settlement_date_raw = record.get('settlement_date')
+        standardized_settlement_date = None
+        
+        # Get the current date for logical validation
+        # Using the current time to avoid any timezone issues with the check
+        current_date = datetime.now().date()
+
+        # Process only if a value is present
+        if settlement_date_raw and str(settlement_date_raw).strip():
+            # --- THIS IS THE CORRECTED LINE ---
+            # Trim whitespace and then split the string by the space to remove the time part.
+            # '2025-05-01 00:00:00' becomes '2025-05-01'
+            date_str = str(settlement_date_raw).strip().split(' ')[0]
+            
+            try:
+                # Attempt to parse the string to ensure it's a valid date in YYYY-MM-DD format
+                parsed_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                
+                # Optional but recommended: Check that the settlement date is not in the future
+                if parsed_date > current_date:
+                    validation_errors.append(f"Settlement Date cannot be in the future: '{date_str}'.")
+                else:
+                    # If validation passes, the string is now guaranteed to be in the desired format
+                    standardized_settlement_date = date_str
+            except (ValueError, TypeError):
+                # This block catches both invalid formats and non-existent dates (e.g., 2025-02-30)
+                validation_errors.append(f"Invalid Settlement Date: '{date_str}'. Must be a valid date in YYYY-MM-DD format.")
+
+        payment_reference_details=record.get('payment_reference_details')
+        if not payment_reference_details or payment_reference_details=='NULL':
+                payment_reference_details= 'Not applicable'
+
         
         # Check for an exact duplicate row in the master table for VVA
+        # 3. Check for an exact duplicate row in the master table for RMS
         duplicate_check_query = f"""
             SELECT 1 FROM {master_table}
-            WHERE institution_code = %s AND institute_name = %s AND course_name = %s
+            WHERE institution_code = %s AND student_name = %s
         """
-        values_for_check = (institution_code, institute, course)
+        values_for_check = (institution_code, record.get('student_name'))
         cursor.execute(duplicate_check_query, values_for_check)
         
         if cursor.fetchone():
-            validation_errors.append("Error: A record with this exact data already exists in the master table.")
+            validation_errors.append("Error: A record with this exact data already exists in the master table for RMS.")
             return None, None, validation_errors
         
         # Prepare the insertion query and values for VVA
         master_insert_query = f"""
-            INSERT INTO {master_table} (uploaded_file_id, institution_code, institute_name, course_name)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO {master_table} (uploaded_file_id, institution_code,institute_name,branch_name,student_name,email_address,mobile_no,course_name,registration_code,qfix_ref_no,payment_status,installment_no,total_amt,late_payment_charges,amount_paid,remaining_amount,fees_paid_date,due_date,fees_id,transaction_id,bank_reference_no,payment_option,payment_mode,payment_reference_details,payment_details,settlement_date,division_name,refund_amount,refund_date,refund_status,fees_category,cheque_dd_no,vva_pre_primary_online_offline_live_account,vvm_online_offline_live_account,
+            tuition_fees,term_fees,activity_fees,admission_fees,registration_fees,development_fund,refundable_deposit)
+            VALUES (%s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """
-        values = (uploaded_file_id, institution_code, institute, standardized_course)
+        values = (uploaded_file_id, institution_code, record.get('institute'), record.get('branch'),standardized_student_name,standardized_email,standardized_mobile_number,standardized_course,record.get('registration_code'),record.get('qfix_reference_number'),record.get('payment_status'),record.get('fee_head'),record.get('total_amount'),record.get('late_payment_charges'),record.get('paid_amount'),record.get('remaining_amount'),record.get('fees_paid_date'),record.get('due_date'),record.get('fees_id'),record.get('payment_gateway_transaction_id'),record.get('bank_reference_no'),record.get('payment_option'),standardized_payment_mode,payment_reference_details,record.get('payment_details'),record.get('settlement_date'),record.get('division'),record.get('refund_amount'),record.get('refund_date'),record.get('refund_status'),record.get('fees_category'),cheque_dd_no,record.get('vva_pre_primary_online_offline_live_account'),record.get('vvm_online_offline_live_account'),record.get('tuition_fees'),record.get('term_fees'),record.get('activity_fees'),record.get('admission_fees'),record.get('registration_fees'),record.get('development_fund'),record.get('refundable_deposit'))
         
         return master_insert_query, values, validation_errors
         
