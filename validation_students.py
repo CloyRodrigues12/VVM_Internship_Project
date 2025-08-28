@@ -18,6 +18,42 @@ def validate_and_format_name(name_string):
     formatted_name = " ".join(word.capitalize() for word in cleaned_name.split())
     return formatted_name
 
+def validate_and_clean_mobile_number(raw_value):
+    """
+    Cleans and validates an Indian mobile number from various formats.
+    
+    Args:
+        raw_value: The input value, which can be a string, int, float, or None.
+        
+    Returns:
+        A clean, 10-digit string if the number is valid.
+        None if the input is empty or the number is invalid.
+    """
+    # Rule 1 & 2: If value is missing or empty, return None.
+    if raw_value is None or not str(raw_value).strip():
+        return None
+
+    # Convert to string and handle numbers read as floats (e.g., 9876543210.0)
+    num_str = str(raw_value).strip()
+    if num_str.endswith('.0'):
+        num_str = num_str[:-2]
+
+    # Remove all non-digit characters (like '+', '-', '(', ')', ' ')
+    cleaned_num = re.sub(r'\D', '', num_str)
+
+    # Handle common prefixes like '91' or '0'
+    if len(cleaned_num) == 12 and cleaned_num.startswith('91'):
+        cleaned_num = cleaned_num[2:]
+    elif len(cleaned_num) == 11 and cleaned_num.startswith('0'):
+        cleaned_num = cleaned_num[1:]
+
+    # Final check: Must be 10 digits and start with 6, 7, 8, or 9.
+    if re.match(r'^[6-9]\d{9}$', cleaned_num):
+        return cleaned_num
+    
+    # Rule 3: If the number is invalid at this point, return None.
+    return None
+
 # A list of standardized occupations.
 OCCUPATION_STANDARDS = [
     'Businessman',
@@ -134,23 +170,40 @@ def _validate_and_prepare_student_sdcce(cursor, record, institution_code, master
     if not city:
         city = ' '
         #validation_errors.append("City or Other City must have a value.")
-
     state = str(record.get('state') or record.get('other_state') or '').strip()
     if not state:
         validation_errors.append("State or Other State must have a value.")
 
-    # --- 3. Name Validations ---
-    for name_field, display_name in [('name_of_the_applicant', 'Student'), ('name_of_father', "Father's"), ('name_of_mother', "Mother's")]:
+# --- 3. Name Validations ---
+    # We split the logic: the student's name is mandatory, but parents' names are optional.
+    
+    # 1. Student's Name (Mandatory)
+    raw_student_name = record.get('name_of_the_applicant')
+    result = validate_and_format_name(raw_student_name)
+    if isinstance(result, tuple):
+        # For the mandatory student name, a failure is a critical error.
+        validation_errors.append(f"Student Name Error: {result[1]}")
+    else:
+        student_name = result
+
+    # 2. Parents' Names (Optional)
+    # For these optional fields, if a value is present but invalid (e.g., '---'),
+    # we will treat it as a placeholder and simply leave the field as None without raising an error.
+    for name_field, display_name in [('name_of_father', "Father's"), ('name_of_mother', "Mother's")]:
         raw_name = record.get(name_field)
-        result = validate_and_format_name(raw_name)
-        if isinstance(result, tuple):
-            validation_errors.append(f"{display_name} Name Error: {result[1]}")
-        elif name_field == 'name_of_the_applicant':
-            student_name = result
-        elif name_field == 'name_of_father':
-            father_name = result
-        elif name_field == 'name_of_mother':
-            mother_name = result
+        
+        if raw_name and str(raw_name).strip():
+            # We attempt to validate and format the name.
+            result = validate_and_format_name(raw_name)
+            
+            # Only assign the name if it was successfully validated and formatted.
+            if not isinstance(result, tuple):
+                if name_field == 'name_of_father':
+                    father_name = result
+                elif name_field == 'name_of_mother':
+                    mother_name = result
+            # If validation fails (result is a tuple), we intentionally do nothing.
+            # The corresponding variable (father_name or mother_name) will remain None.
     
     # --- 4. Validate and Combine Date of Birth ---
     dob_year, dob_month, dob_day = record.get('dob_year'), record.get('dob_month'), record.get('dob_day')
@@ -182,37 +235,15 @@ def _validate_and_prepare_student_sdcce(cursor, record, institution_code, master
         if not (pincode_str.isdigit() and len(pincode_str) == 6):
             validation_errors.append(f"Invalid pincode format: '{pincode}'. Must be a 6-digit number.")
     
-    # --- 7. Validate all mobile numbers ---
-    def _validate_phone(number_val, field_name):
-        if number_val:
-            # First, convert to string to handle int, float, or str inputs
-            num_str = str(number_val)
-            
-            # **FIX**: Specifically handle numbers that were read as floats (e.g., '9422059555.0')
-            if num_str.endswith('.0'):
-                num_str = num_str[:-2]  # Remove the trailing '.0'
-            
-            # Now, remove any remaining non-digit characters (like spaces, dashes, etc.)
-            cleaned = re.sub(r'\D', '', num_str)
-            
-            # Validate against the 10-digit Indian mobile number format
-            if re.match(r'^[6-9]\d{9}$', cleaned):
-                return int(cleaned), None
-            
-            # If validation fails, return the error with the original value for context
-            return None, f"Invalid {field_name}: '{number_val}'. Must be a 10-digit Indian mobile number."
-        
-        # If the input value is None or empty, return no value and no error
-        return None, None
+# --- 7. Validate all mobile numbers (using forgiving logic) ---
+    
+    # We will use the 'validate_and_clean_mobile_number' helper function directly.
+    # It will return a valid 10-digit string or None, and will not raise errors.
 
-    mobile, err = _validate_phone(record.get('mobile'), 'Mobile Number')
-    if err: validation_errors.append(err)
-    alternate_mobile, err = _validate_phone(record.get('alternate_mobile'), 'Alternate Mobile')
-    if err: validation_errors.append(err)
-    father_mobile, err = _validate_phone(record.get('father_mobile'), "Father's Mobile")
-    if err: validation_errors.append(err)
-    mother_mobile, err = _validate_phone(record.get('mother_mobile'), "Mother's Mobile")
-    if err: validation_errors.append(err)
+    mobile = validate_and_clean_mobile_number(record.get('mobile'))
+    alternate_mobile = validate_and_clean_mobile_number(record.get('alternate_mobile'))
+    father_mobile = validate_and_clean_mobile_number(record.get('father_mobile'))
+    mother_mobile = validate_and_clean_mobile_number(record.get('mother_mobile'))
 
     # --- 9. Validate and standardize 'admission_category' ---
     admission_category = record.get('admission_category')
@@ -265,7 +296,8 @@ def _validate_and_prepare_student_sdcce(cursor, record, institution_code, master
         if normalized in ALLOWED_BLOOD_GROUPS:
             standardized_blood_group = normalized
         else:
-            validation_errors.append(f"Invalid blood group: '{blood_group}'.")
+            standardized_blood_group = 'Unknown' # Default to 'Unknown' if not valid
+            
 
     # --- 12. Validate 'email' format ---
     email = record.get('email')
@@ -497,8 +529,9 @@ def _validate_and_prepare_student_rms(cursor, record, institution_code, master_t
             else:
                 date_of_birth = date_obj.strftime('%Y-%m-%d')
 
-   # --- 12. Validate 'email' format ---
-    email = record.get('email')
+    # --- 12. Validate 'email' format ---
+    email = record.get('e_mail')
+    standardized_email = None
     if email:
         email = str(email).strip()
         if re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
@@ -578,6 +611,295 @@ def _validate_and_prepare_student_rms(cursor, record, institution_code, master_t
         else:
             validation_errors.append(f"Batch parsing logic not implemented for institution code: '{institution_code}'.")
 
+
+    # --- Name Validations (Student, Father, Mother) ---
+    full_name, father_full_name, mother_full_name = None, None, None
+
+    # 1. Student's Full Name (Mandatory)
+    # This field is required, so we expect validate_and_format_name to return a valid name.
+    raw_student_name = record.get('full_name')
+    result = validate_and_format_name(raw_student_name)
+    if isinstance(result, tuple): # An error was returned
+        validation_errors.append(f"Student Name Error: {result[1]}")
+    else:
+        full_name = result
+
+# 2. Parents' Names (Optional) - More Robust Logic
+    # For optional fields, if a value is present but invalid, we will
+    # treat it as a placeholder and set the field to None without raising an error.
+    for field_key, display_name in [('father_full_name', "Father's Full Name"), 
+                                    ('mother_full_name', "Mother's Full Name")]:
+        raw_name = record.get(field_key)
+        
+        if raw_name and str(raw_name).strip():
+            # We attempt to validate and format the name.
+            result = validate_and_format_name(raw_name)
+            
+            # The 'result' will either be a formatted name or a (False, error_message) tuple.
+            if not isinstance(result, tuple):
+                # The name was valid and successfully formatted. Assign it.
+                if field_key == 'father_full_name':
+                    father_full_name = result
+                elif field_key == 'mother_full_name':
+                    mother_full_name = result
+            # If 'result' is a tuple, it means validation failed.
+            # We do nothing, intentionally. The variable (e.g., father_full_name)
+            # will keep its default value of None, and no error is raised.
+
+
+    # --- Gender Standardization ---
+    standardized_gender = None
+    raw_gender = record.get('gender') # Assuming the source column is 'gender'
+
+    if not raw_gender or not str(raw_gender).strip():
+        validation_errors.append("Missing mandatory field: Gender")
+    else:
+        # Clean the input: remove whitespace and convert to uppercase for consistent matching.
+        cleaned_gender = str(raw_gender).strip().upper()
+
+        # Define the mapping from common inputs to the standardized values.
+        gender_map = {
+            'M': 'MALE',
+            'MALE': 'MALE',
+            'F': 'FEMALE',
+            'FEMALE': 'FEMALE',
+            'O': 'OTHER',
+            'OTHER': 'OTHER',
+        }
+
+        # Look up the cleaned input in the map. .get() returns None if not found.
+        standardized_gender = gender_map.get(cleaned_gender)
+
+        # If the lookup failed, the provided gender is not a recognized value.
+        if standardized_gender is None:
+            validation_errors.append(f"Invalid gender value: '{raw_gender}'. Expected M/F or Male/Female.")
+
+
+    # --- Roll Number Validation (as Optional Integer) ---
+    validated_roll_number = None
+    raw_roll_number = record.get('roll_number')
+
+    # Only perform validation if a roll number value is actually present.
+    if raw_roll_number is not None and str(raw_roll_number).strip() != '':
+        try:
+            # We first convert to a float and then to an int. This robustly handles
+            # whole numbers that might be formatted as decimals (e.g., 123.0).
+            roll_no_as_int = int(float(raw_roll_number))
+            # If a roll number is provided, it must be a positive integer.
+            if roll_no_as_int > 0:
+                validated_roll_number = roll_no_as_int
+            else:
+                validation_errors.append(f"Invalid Roll Number: '{raw_roll_number}'. If provided, it must be a positive number.")
+        except (ValueError, TypeError):
+            # This error occurs if the provided value is not a valid number.
+            validation_errors.append(f"Invalid Roll Number: '{raw_roll_number}'. If provided, it must be a whole number.")
+            
+    # If raw_roll_number was empty or None, the code above is skipped,
+    # and validated_roll_number correctly remains None.
+
+
+        # --- 9. Validate and standardize 'admission_category' ---
+    student_category = record.get('student_category')
+    standardized_student_category = None
+    
+    # UPDATED: Added PWBD and variations for SC/ST to be more robust.
+    category_mapping = {
+        'SCHEDULED CASTE': 'SC', 
+        'SCHEDULE CASTE': 'SC', 
+        'SC': 'SC',
+        'SCHEDULED TRIBE': 'ST',
+        'SCHEDULE TRIBE': 'ST',
+        'SCHEDULED TRIBE(ST)': 'ST',
+        'SCHEDULED TRIBE (ST)': 'ST',# entry with space
+        'ST': 'ST',
+        'OTHER BACKWARD CLASSES': 'OBC',
+        'OBC': 'OBC',
+        'PWBD': 'PWBD', 
+        'PERSONS WITH BENCHMARK DISABILITIES': 'PWBD',
+        'PWD': 'PWBD',
+        'UNRESERVED': 'UR',
+        'UR': 'UR',
+        'GENERAL': 'UR',
+    }
+
+    if student_category:
+        normalized = str(student_category).strip().upper()
+        standardized_student_category = category_mapping.get(normalized)
+
+
+        # ---Validate 'blood_group' ---
+    blood_group = record.get('blood_group')
+    standardized_blood_group= None
+    ALLOWED_BLOOD_GROUPS = {'A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'}
+    if blood_group:
+        normalized = str(blood_group).strip().upper()
+        if normalized in ALLOWED_BLOOD_GROUPS:
+            standardized_blood_group = normalized
+        else:
+            standardized_blood_group = 'Unknown' # Default to 'Unknown' if not valid
+
+
+    # --- Religion Standardization ---
+    standardized_religion = None
+    raw_religion = record.get('religion') # Assuming the source column is 'religion'
+
+    if not raw_religion or not str(raw_religion).strip():
+        validation_errors.append("Missing mandatory field: Religion")
+    else:
+        # Clean the input: remove whitespace and convert to uppercase for consistent matching.
+        cleaned_religion = str(raw_religion).strip().upper()
+
+        # Map common inputs from the dropdown/data to a standard format.
+        religion_map = {
+            'HINDU': 'HINDUISM',
+            'HINDUISM': 'HINDUISM',
+            'MUSLIM': 'ISLAM',
+            'ISLAM': 'ISLAM',
+            'CHRISTIAN': 'CHRISTIANITY',
+            'CHRISTIANITY': 'CHRISTIANITY',
+            'CATHOLIC': 'CHRISTIANITY',
+            'SIKH': 'SIKHISM',
+            'SIKHISM': 'SIKHISM',
+            'BUDDHIST': 'BUDDHISM',
+            'BUDDHISM': 'BUDDHISM',
+            'JAIN': 'JAINISM',
+            'JAINISM': 'JAINISM',
+            # Note: 'Parsi' refers to the people; the religion is 'Zoroastrianism'. 
+            # We map it here for better data standardization.
+            'PARSI': 'ZOROASTRIANISM',
+            'ZOROASTRIANISM': 'ZOROASTRIANISM',
+            'OTHERS': 'OTHERS',
+            'OTHER': 'OTHERS'
+        }
+
+        # Look up the cleaned input in the map. .get() returns None if not found.
+        standardized_religion = religion_map.get(cleaned_religion)
+
+        # If the lookup failed, the provided religion is not a recognized value.
+        if standardized_religion is None:
+            validation_errors.append(f"Invalid or unmapped religion: '{raw_religion}'.")
+
+
+# --- Goa-Specific City and State Validation (CORRECTED) ---
+    standardized_city = None
+    standardized_state = 'Goa'
+
+    raw_city = record.get('city')
+    cleaned_raw_city = str(raw_city or '').strip()
+
+    if not cleaned_raw_city or cleaned_raw_city == '-':
+        standardized_city = 'Unknown'
+    else:
+        cleaned_city_input = cleaned_raw_city.upper()
+
+        # VERIFIED: An authoritative list of Goa's 14 official Municipal Corporation & Councils.
+        GOA_CITIES = [
+            'PANAJI', 'MARGAO', 'VASCO DA GAMA', 'MAPUSA', 'PONDA', 'BICHOLIM',
+            'CANACONA', 'CUNCOLIM', 'CURCHOREM', 'PERNEM', 'QUEPEM', 'SANGUEM',
+            'SANQUELIM', 'VALPOI'
+        ]
+        
+        # VERIFIED: Mapping for common city aliases and alternate spellings.
+        GOA_CITY_ALIASES = {
+            'PANJIM': 'PANAJI', 'MADGAON': 'MARGAO', 'VASCO': 'VASCO DA GAMA',
+            'MORMUGAO': 'VASCO DA GAMA', 'SANKHALI': 'SANQUELIM'
+        }
+
+        # VERIFIED: Mapping for important suburbs & census towns to their nearest official city.
+        GOA_SUBURB_MAP = {
+            'FATORDA': 'MARGAO', 'NAVELIM': 'MARGAO', 'COLVA': 'MARGAO', 'SHIRODA': 'PONDA',
+            'CALANGUTE': 'MAPUSA', 'BAGA': 'MAPUSA', 'ANJUNA': 'MAPUSA', 'CANDOLIM': 'MAPUSA'
+        }
+        
+        found_city = None
+
+        # --- Validation Flow ---
+        # 1. Direct checks (Alias, Suburb, Official City)
+        if cleaned_city_input in GOA_CITY_ALIASES:
+            found_city = GOA_CITY_ALIASES[cleaned_city_input].title()
+        elif cleaned_city_input in GOA_SUBURB_MAP:
+            found_city = GOA_SUBURB_MAP[cleaned_city_input].title()
+        elif cleaned_city_input in GOA_CITIES:
+            # CORRECTED LINE: Applying .title() to the input string.
+            found_city = cleaned_city_input.title()
+        
+        # 2. Fuzzy matching for typos
+        elif not found_city:
+            all_known_names = GOA_CITIES + list(GOA_CITY_ALIASES.keys()) + list(GOA_SUBURB_MAP.keys())
+            matches = difflib.get_close_matches(cleaned_city_input, all_known_names, n=1, cutoff=0.8)
+            if matches:
+                matched_name = matches[0]
+                if matched_name in GOA_CITY_ALIASES: found_city = GOA_CITY_ALIASES[matched_name].title()
+                elif matched_name in GOA_SUBURB_MAP: found_city = GOA_SUBURB_MAP[matched_name].title()
+                else: found_city = matched_name.title()
+
+        # 3. Substring check for cases like "Margao Navelim"
+        if not found_city:
+            for suburb, city in GOA_SUBURB_MAP.items():
+                if suburb in cleaned_city_input:
+                    found_city = city.title(); break
+            if not found_city:
+                for city in GOA_CITIES:
+                    if city in cleaned_city_input:
+                        found_city = city.title(); break
+        
+        # Final assignment
+        if found_city:
+            standardized_city = found_city
+        else:
+            standardized_city = 'Unknown'
+
+# --- Full Address Combination (using standardized city/state) ---
+    full_address = None
+    address_parts = []
+
+    # 1. Handle Address Lines 1 & 2 from the raw record
+    for field in ['address_line_1', 'address_line_2']:
+        value = record.get(field)
+        if value and str(value).strip():
+            address_parts.append(str(value).strip().title())
+
+    # 2. Handle City, using the new standardization rule
+    # This logic assumes the 'standardized_city' variable was set in the previous step.
+    if standardized_city == 'Unknown':
+        # If the city was not recognized, fall back to the original value for the address string.
+        original_city = record.get('city')
+        if original_city and str(original_city).strip():
+            address_parts.append(str(original_city).strip().title())
+    elif standardized_city:
+        # Otherwise, use the successfully standardized and corrected city name.
+        address_parts.append(standardized_city)
+
+    # 3. Handle State, using the standardized value
+    # This logic assumes the 'standardized_state' variable was set in the previous step.
+    if standardized_state:
+        address_parts.append(standardized_state)
+
+    # 4. Handle Pin Code from the raw record
+    raw_pincode = record.get('pin_code')
+    if raw_pincode and str(raw_pincode).strip():
+        pincode_str = str(raw_pincode).strip().replace('.0', '')
+        if pincode_str:
+            address_parts.append(pincode_str)
+
+    # Join all the collected parts to create the final, clean address.
+    if address_parts:
+        full_address = ', '.join(address_parts)
+
+    
+    pincode = record.get('pin_code')
+    if pincode:
+        pincode_str = str(pincode).strip().replace('.0', '') # Handle floats like 403602.0
+        if not (pincode_str.isdigit() and len(pincode_str) == 6):
+            validation_errors.append(f"Invalid pincode format: '{pincode}'. Must be a 6-digit number.")    
+
+    # --- Phone Number Validation (Optional Fields) ---
+    mobile_number = validate_and_clean_mobile_number(record.get('mobile'))
+    alt_mobile_number = validate_and_clean_mobile_number(record.get('phone'))
+    fathers_mobile_number = validate_and_clean_mobile_number(record.get('father_mobile_phone'))
+    mothers_mobile_number = validate_and_clean_mobile_number(record.get('mother_mobile_phone'))
+
+
     # --- FINAL CHECK: Return all validation errors if any were found ---
     if validation_errors:
         return None, None, validation_errors
@@ -607,11 +929,11 @@ def _validate_and_prepare_student_rms(cursor, record, institution_code, master_t
 
     # --- 5. Prepare the final INSERT query and values ---
     master_insert_query = f"""
-        INSERT INTO {master_table} (student_reference_id,uploaded_file_id,institution_code,admission_no,admission_date,class,section,stream,	batch_year,date_of_birth)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        INSERT INTO {master_table} (student_reference_id,uploaded_file_id,institution_code,admission_no,admission_date,class,section,stream,	batch_year,roll_number,date_of_birth,religion,blood_group,gender,student_category,student_name,fathers_name,mothers_name,email_address,full_address,state,city,pin_code,mobile_number,alt_mobile_number,fathers_mobile_number,mothers_mobile_number)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     values = (
-         student_reference_id,record.get('uploaded_file_id'),institution_code,admission_no,standardized_admission_date,student_class,section,stream,batch_year,date_of_birth
+         student_reference_id,record.get('uploaded_file_id'),institution_code,admission_no,standardized_admission_date,student_class,section,stream,batch_year,validated_roll_number,date_of_birth,standardized_religion,standardized_blood_group,standardized_gender,standardized_student_category,full_name,father_full_name,mother_full_name,standardized_email,full_address,standardized_state,standardized_city,pincode,mobile_number,alt_mobile_number,fathers_mobile_number,mothers_mobile_number 
     )
     
     return master_insert_query, values, validation_errors
