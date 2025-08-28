@@ -210,6 +210,7 @@ SDCCE_GRKCL_STUDENT_MAPPING = {
 # This mapping is for students data from RAMACRISNA MADEVA SALGAOCAR HIGHER SECONDARY SCHOOL (RMS) and VIDYA VIKAS ACADEMY (VVA).
 RMS_VVA_STUDENT_MAPPING = {
     'SL NO': 'sl_no',
+    'Sl No.': 'sl_no',
     'Admission Date': 'admission_date',
     'Country': 'country',
     'Date of Birth': 'date_of_birth',
@@ -224,11 +225,13 @@ RMS_VVA_STUDENT_MAPPING = {
     'Last Name': 'last_name',
     'Full Name': 'full_name',
     'Full Name as per leaving certificate': 'full_name_as_per_leaving_certificate', #<-- for RMS and VVA
-    'Name as per leaving certificate': 'name_as_per_leaving_certificate', #<-- RMS only
+    'Name As Per The Leaving Certificate': 'name_as_per_leaving_certificate', #<-- RMS only
     'Gender': 'gender',
     'Blood Group': 'blood_group',
     'Mother Tongue': 'mother_tongue',
+    'Mother Tongue.1': 'mother_tongue',
     'Religion': 'religion',
+    'Religion.1': 'religion', #<-- RMS only
     'Address Line 1': 'address_line_1',
     'Address Line 2': 'address_line_2',
     'City': 'city',
@@ -244,7 +247,9 @@ RMS_VVA_STUDENT_MAPPING = {
     'Biometric Id': 'biometric_id',
     'Has The Child Attended School Earlier?If Yes Please Specify The School Name': 'has_attended_school_earlier', #<-- VVA only
     'Sibling Studing In Vva? If Yes Specify Name': 'sibling_studying_in_vva', #<-- VVA only
+    'Total Marks Obtained': 'marks_obtained_std_x', #<-- RMS only
     'Percentage obtained Std X': 'percentage_obtained_std_x', #<-- RMS only
+    'Percentage Obtained At Std X': 'percentage_obtained_std_x', #<-- RMS only
     'Percentage Or Grade Obtained In The Final Examination Of Class IX': 'percentage_class_ix', #<-- VVA only
     'Percentage Or Grade Obtained In The Final Examination Of Class X': 'percentage_class_x', #<-- VVA only
     'Year passing IX': 'year_passing_ix', #<-- VVA only
@@ -252,13 +257,15 @@ RMS_VVA_STUDENT_MAPPING = {
     'Name Of The School Board': 'school_board_name', #<-- VVA only
     'Name of The Board': 'name_of_board', #<-- RMS only
     'Name Of The School Attended Earlier': 'name_of_school_attended_earlier', #<-- VVA only
-    'Name of last school attended': 'name_of_last_school_attended', #<-- RMS only
+    'Name Of The Last School Attended': 'name_of_last_school_attended', #<-- RMS only
     'Class Xi And Xii Subjects': 'class_xi_xii_subjects', #<-- VVA only
     'Choose Language II': 'choose_language_ii', #<-- RMS only
     'Choose Optional Subject': 'choose_optional_subject', #<-- RMS only
     'House': 'house', #<-- VVA only
     'Age as on 31 May 2017': 'age_as_on_31_may_2017', #<-- RMS only
     'Aadhar Card No': 'aadhar_card_no',
+    'Adhar Card No': 'aadhar_card_no',
+
     'Studentuid': 'studentuid',
     'BPL': 'bpl',
     'Extra-curricular/Sports': 'extra_curricular_sports',
@@ -266,9 +273,9 @@ RMS_VVA_STUDENT_MAPPING = {
     'Student Bank Account No': 'student_bank_account_no',
     'Name of Bank': 'name_of_bank',
     'IFSC Code Of The Bank Branch': 'ifsc_code_of_the_bank_branch',
+
     'Designation': 'designation',
     'Category': 'category',
-    'Religion2': 'religion2',
     'Gen Reg No': 'gen_reg_no',
     'Permanent Education Number': 'permanent_education_number',
     'Pen number': 'pen_number',
@@ -285,6 +292,7 @@ RMS_VVA_STUDENT_MAPPING = {
     'Father Education': 'father_education', #<-- RMS only
     'Father Occupation': 'father_occupation', #<-- RMS only
     'Father Income': 'father_income', #<-- RMS only
+    'Father income': 'father_income', #<-- RMS only
     "Father's Email": 'father_email', #<-- RMS only
     'Father Office Address Line1': 'father_office_address_line1', #<-- RMS only
     'Father Office Address Line2': 'father_office_address_line2', #<-- RMS only

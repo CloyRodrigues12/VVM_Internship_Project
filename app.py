@@ -111,6 +111,61 @@ def sanitize_column_name(column_name):
     sanitized = sanitized.replace("?", '')
     return sanitized
 
+
+def _resolve_empty_duplicates(df):
+    """
+    Pre-processes a DataFrame to resolve a specific duplicate column scenario.
+    
+    If a column name appears multiple times, and exactly ONE of those columns
+    contains data while the others are completely empty (all NaN), this function
+    will silently drop the empty duplicate(s).
+    
+    In all other cases (no duplicates, or multiple duplicates with data),
+    it does nothing, allowing the downstream logic to handle it.
+    
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+    
+    Returns:
+        pd.DataFrame: The processed DataFrame with empty duplicates removed.
+    """
+    # Find column names that appear more than once
+    col_counts = Counter(df.columns)
+    duplicate_names = {name for name, count in col_counts.items() if count > 1}
+    
+    if not duplicate_names:
+        # No duplicates found, return the DataFrame as is.
+        return df
+
+    cols_to_drop_indices = []
+    
+    for name in duplicate_names:
+        # Get the integer indices of all columns with this duplicate name
+        all_indices = [i for i, col_name in enumerate(df.columns) if col_name == name]
+        
+        non_empty_indices = []
+        empty_indices = []
+        
+        for i in all_indices:
+            # Check if the column at this specific index is entirely empty
+            if df.iloc[:, i].isnull().all():
+                empty_indices.append(i)
+            else:
+                non_empty_indices.append(i)
+        
+        # This is the key condition: if there is EXACTLY one column with data
+        # among the duplicates, we mark the empty ones for removal.
+        if len(non_empty_indices) == 1:
+            print(f"Resolving duplicates for '{name}': Found one column with data. Dropping {len(empty_indices)} empty column(s).")
+            cols_to_drop_indices.extend(empty_indices)
+            
+    if cols_to_drop_indices:
+        # Drop the identified empty columns by their integer index
+        df = df.drop(df.columns[cols_to_drop_indices], axis=1)
+        
+    return df
+
+
 def read_file(file, file_name, column_map):
     """
     Reads an Excel or CSV file, identifies the header row based on a fixed number of key headers,
@@ -159,26 +214,23 @@ def read_file(file, file_name, column_map):
 def process_and_validate_columns(df, column_map):
     """
     Processes and validates columns, correctly handling multiple source columns
-    mapping to a single destination column in a case-insensitive manner.
-    - If multiple source columns for a single destination exist, it merges them by
-      taking the first available non-null value for each row.
-    - Renames columns to the target database names and adds any missing columns.
+    (including duplicate column names and names with extra spaces) mapping to a
+    single destination column in a case-insensitive manner.
     """
-    # --- Step 1: Standardize the DataFrame's column names to lowercase ---
-    # Keep a map of original names for error messages
-    original_columns = {col.lower(): col for col in df.columns}
-    df.columns = df.columns.str.lower()
+    # --- Step 1: Standardize the DataFrame's column names ---
+    # Convert to lowercase AND strip any leading/trailing whitespace
+    df.columns = df.columns.str.lower().str.strip()
     
     # --- Step 2: Create a reverse map from destination DB col to a LIST of lowercase source cols ---
     db_to_source_map = {}
     for source_col, db_col in column_map.items():
-        source_col_lower = source_col.lower()
+        # Sanitize the mapping key just like the column names
+        source_col_sanitized = source_col.lower().strip()
         if db_col not in db_to_source_map:
             db_to_source_map[db_col] = []
-        db_to_source_map[db_col].append(source_col_lower)
+        db_to_source_map[db_col].append(source_col_sanitized)
 
     final_df = pd.DataFrame()
-    errors = []
     
     # Get a unique, ordered list of expected database columns
     expected_db_cols = list(dict.fromkeys(column_map.values()))
@@ -186,35 +238,22 @@ def process_and_validate_columns(df, column_map):
     # --- Step 3: Iterate through each unique destination column ---
     for db_col in expected_db_cols:
         possible_source_cols = db_to_source_map.get(db_col, [])
-        
-        # Find which of the possible source columns actually exist in the uploaded file (case-insensitive)
         source_cols_in_df = [col for col in possible_source_cols if col in df.columns]
         
-        # If none of the possible source columns are in the file, create an empty column
         if not source_cols_in_df:
             final_df[db_col] = pd.NA
             continue
 
-        # --- Step 4: Merge data from all found source columns for the current destination ---
-        # Initialize the destination column with data from the first found source column.
-        merged_col = df[source_cols_in_df[0]].copy()
-        
-        # If there are other source columns, "coalesce" them.
-        # This means for each row, if the value is null, try to fill it with the value
-        # from the next source column.
-        if len(source_cols_in_df) > 1:
-            for next_col in source_cols_in_df[1:]:
-                merged_col.fillna(df[next_col], inplace=True)
-        
-        final_df[db_col] = merged_col
-
-    # --- Final check for columns that may still be entirely empty ---
-    # This logic remains the same as before.
-    if errors:
-        raise ValueError("\n".join(errors))
+        # --- Step 4: SIMPLIFIED AND HARDENED MERGE LOGIC ---
+        # This logic handles all cases: single columns, multiple different columns,
+        # and multiple columns with the SAME duplicate name.
+        sub_df = df[source_cols_in_df]
+        merged_series = sub_df.bfill(axis=1).iloc[:, 0]
+        final_df[db_col] = merged_series
 
     # Ensure the final DataFrame has all expected columns in the correct order
     return final_df.reindex(columns=expected_db_cols)
+
 @app.route('/preview', methods=['POST'])
 def preview_file():
     """
@@ -242,6 +281,8 @@ def preview_file():
             return jsonify({'error': 'Invalid file type'}), 400
         
         df, header_row_index = read_file(file, file.filename, column_map)
+
+        df = _resolve_empty_duplicates(df) 
         
         # Check for duplicate rows BEFORE any further processing
         df['original_row_number'] = df.index + header_row_index + 2
@@ -336,6 +377,8 @@ def upload_file():
             return jsonify({'error': 'Invalid file type'}), 400
 
         df, _ = read_file(file, file.filename, column_map)
+
+        df = _resolve_empty_duplicates(df)
         
         # Check for duplicates a second time to be safe.
         if df.duplicated().any():

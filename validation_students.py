@@ -422,33 +422,161 @@ def _validate_and_prepare_student_sdcce(cursor, record, institution_code, master
 
 
 #validation for RMS and VVA
-def _validate_and_prepare_student_rms(cursor, record, institution_code, master_table):
+def _validate_and_prepare_student_rms(cursor, record, institution_code, master_table, academic_year, academic_quarter):
     
     validation_errors = []
 
-    # cleaned variables
-    standardized_admission_date = None
 
-    # --- Admission Date Validation ---
+    # --- 2. Admission Number Validation ---
+    admission_no = None # Initialize a cleaned variable
+    raw_admission_no = record.get('admission_no')
+
+    if not raw_admission_no or not str(raw_admission_no).strip():
+        validation_errors.append("Missing mandatory field: Admission Number")
+    else:
+        # Clean the admission number by removing leading/trailing whitespace
+        admission_no = str(raw_admission_no).strip()
+
+
+    # --- 4. Admission Date Validation ---
+    standardized_admission_date = None 
     raw_admission_date = record.get('admission_date')
     if not raw_admission_date or not str(raw_admission_date).strip():
-        # Assuming admission_date is mandatory. If it's optional, we can remove this line.
         validation_errors.append("Missing mandatory field: Admission Date")
     else:
-        try:
-            # Parse the date string assuming DD-MM-YYYY format
-            date_obj = datetime.strptime(str(raw_admission_date).strip(), '%d-%m-%Y').date()
+        # Pre-process the string to remove any time component
+        date_string = str(raw_admission_date).strip().split(' ')[0]
+        # List of expected date formats, now including YYYY-MM-DD
+        possible_formats = ['%d/%m/%Y', '%d-%m-%Y', '%Y-%m-%d', '%Y/%m/%d']
+        date_obj = None
+        # Try parsing the date with each possible format
+        for fmt in possible_formats:
+            try:
+                date_obj = datetime.strptime(date_string, fmt).date()
+                break # If parsing is successful, break the loop
+            except ValueError:
+                continue # If the format doesn't match, continue
+        # After the loop, check if parsing was successful
+        if date_obj is None:
+            validation_errors.append(f"Invalid Admission Date format: '{raw_admission_date}'. Expected DD/MM/YYYY, DD-MM-YYYY, or YYYY-MM-DD.")
+        else:
+            standardized_admission_date = date_obj.strftime('%Y-%m-%d')
 
-            # A logical check: an admission date should not be in the future.
+
+# --- 3. Date of Birth Validation ---
+    date_of_birth = None 
+    raw_dob = record.get('date_of_birth')
+
+    if not raw_dob or not str(raw_dob).strip():
+        validation_errors.append("Missing mandatory field: Date of Birth")
+    else:
+        # Pre-process the string to remove any time component
+        date_string = str(raw_dob).strip().split(' ')[0]
+        
+        # List of expected date formats, now including YYYY-MM-DD
+        possible_formats = ['%d/%m/%Y', '%d-%m-%Y', '%Y-%m-%d', '%Y/%m/%d']
+        date_obj = None
+        
+        # Try parsing the date with each possible format
+        for fmt in possible_formats:
+            try:
+                date_obj = datetime.strptime(date_string, fmt).date()
+                break 
+            except ValueError:
+                continue
+        
+        # After the loop, check if parsing was successful
+        if date_obj is None:
+            validation_errors.append(f"Invalid Date of Birth format: '{raw_dob}'. Expected DD/MM/YYYY, DD-MM-YYYY, or YYYY-MM-DD.")
+        else:
+            # Additional logical checks for a valid date of birth
             if date_obj > date.today():
-                validation_errors.append(f"Invalid Admission Date: '{raw_admission_date}' cannot be in the future.")
+                validation_errors.append(f"Invalid Date of Birth: '{raw_dob}' cannot be in the future.")
+            elif date_obj.year < 1950: 
+                validation_errors.append(f"Invalid Date of Birth: '{raw_dob}'. Year seems unusually early.")
             else:
-                # Standardize the date into YYYY-MM-DD format for the database
-                standardized_admission_date = date_obj.strftime('%Y-%m-%d')
+                date_of_birth = date_obj.strftime('%Y-%m-%d')
 
-        except ValueError:
-            # This block catches errors if the date string doesn't match the format
-            validation_errors.append(f"Invalid Admission Date format: '{raw_admission_date}'. Expected format is DD-MM-YYYY.")
+   # --- 12. Validate 'email' format ---
+    email = record.get('email')
+    if email:
+        email = str(email).strip()
+        if re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            standardized_email = email.lower()
+        else:
+            validation_errors.append(f"Invalid email format: '{email}'.")
+
+    if institution_code == 'RMS':
+        student_reference_id= record.get('gen_reg_no')
+    elif institution_code == 'VVA':
+        student_reference_id= admission_no
+
+    # --- 5. Batch Details (Class, Section, Stream, Year) Extraction ---
+    student_class, section, stream, batch_year = None, None, None, None
+    raw_batch = record.get('batch')
+
+    if not raw_batch or not str(raw_batch).strip():
+        validation_errors.append("Missing mandatory field: Batch")
+    else:
+        cleaned_batch = str(raw_batch).strip()
+
+        if institution_code == 'RMS':
+            # Expected format: XII-COM - 2025-26 A
+            match = re.match(r'^(\w+)-(\w+)\s*-\s*(\d{4}-\d{2})\s*([A-Z])$', cleaned_batch, re.IGNORECASE)
+            if match:
+                raw_class, raw_stream, raw_year, section = match.groups()
+
+                # --- Standardize Batch Year (YYYY-YY to YYYY-YYYY) ---
+                start_year, end_year_short = raw_year.split('-')
+                century = start_year[:2] # e.g., '20' from '2025'
+                batch_year = f"{start_year}-{century}{end_year_short}"
+
+                # --- Standardize Class (Roman to Numeric) ---
+                class_map = {'IX': '9', 'X': '10', 'XI': '11', 'XII': '12'}
+                student_class = class_map.get(raw_class.upper())
+                if not student_class:
+                    validation_errors.append(f"Invalid class value '{raw_class}' in batch '{cleaned_batch}'.")
+
+                # --- Standardize Stream ---
+                stream_map = {'COM': 'Commerce', 'SCI': 'Science'}
+                stream = stream_map.get(raw_stream.upper())
+                if not stream:
+                    validation_errors.append(f"Unknown stream '{raw_stream}' in batch '{cleaned_batch}'.")
+
+            else:
+                validation_errors.append(f"Invalid RMS batch format: '{raw_batch}'. Expected 'Class-Stream - YYYY-YY S'.")
+
+        elif institution_code == 'VVA':
+            # Expected format: CL-12 - B 25-26
+            match = re.match(r'^CL-(\d+)\s*-\s*([A-Z])\s*(\d{2}-\d{2})$', cleaned_batch, re.IGNORECASE)
+            if match:
+                student_class, section, raw_year = match.groups()
+                
+                # --- Standardize Batch Year (YY-YY to YYYY-YY) ---
+                start_year, end_year = raw_year.split('-')
+                batch_year = f"20{start_year}-20{end_year}" # or simply f"20{raw_year}"
+                
+                # --- Assign Stream based on Class (as per VVA Prospectus) ---
+                try:
+                    class_num = int(student_class)
+                    if 1 <= class_num <= 5:
+                        stream = 'Primary'
+                    elif 6 <= class_num <= 8:
+                        stream = 'Middle School'
+                    elif 9 <= class_num <= 10:
+                        stream = 'Secondary'
+                    elif 11 <= class_num <= 12:
+                        stream = 'Senior Secondary'
+                    else:
+                        stream = None # Or 'N/A' for classes outside the 1-12 range
+                except ValueError:
+                    stream = None # If student_class is not a valid number
+
+            else:
+                validation_errors.append(f"Invalid VVA batch format: '{raw_batch}'. Expected 'CL-Class - Section YY-YY'.")
+        
+        else:
+            validation_errors.append(f"Batch parsing logic not implemented for institution code: '{institution_code}'.")
 
     # --- FINAL CHECK: Return all validation errors if any were found ---
     if validation_errors:
@@ -457,33 +585,33 @@ def _validate_and_prepare_student_rms(cursor, record, institution_code, master_t
     # --- 3. Check for an exact duplicate row in the master table before proceeding ---
     duplicate_check_query = f"""
         SELECT 1 FROM {master_table}
-        WHERE institution_code = %s AND full_name = %s AND email_id = %s AND contact_no = %s AND gender = %s 
+        WHERE institution_code = %s AND email_address = %s
         
     """
     values_for_check = (
-        institution_code, record.get('full_name'), record.get('email_id'), record.get('contact_no'), record.get('gender')
-    )
+        institution_code, record.get('email_address'))
+    
     cursor.execute(duplicate_check_query, values_for_check)
     if cursor.fetchone():
         validation_errors.append("Error: A record with this exact data already exists in the master table.")
         return None, None, validation_errors
     
     # --- 4. Check for existing student record before inserting ---
-    check_query = f"SELECT id FROM {master_table} WHERE institution_code = %s AND full_name = %s"
-    cursor.execute(check_query, (institution_code, record.get('full_name'),))
+    check_query = f"SELECT master_id FROM {master_table} WHERE institution_code = %s AND student_name = %s"
+    cursor.execute(check_query, (institution_code, record.get('student_name'),))
     existing_record = cursor.fetchone()
 
     if existing_record:
-        update_query = f"UPDATE {master_table} SET is_active = 0 WHERE id = %s"
-        cursor.execute(update_query, (existing_record['id'],))
+        update_query = f"UPDATE {master_table} SET is_active = 0 WHERE master_id = %s"
+        cursor.execute(update_query, (existing_record['master_id'],))
 
     # --- 5. Prepare the final INSERT query and values ---
     master_insert_query = f"""
-        INSERT INTO {master_table} (institution_code, full_name, email_id, contact_no, gender)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO {master_table} (student_reference_id,uploaded_file_id,institution_code,admission_no,admission_date,class,section,stream,	batch_year,date_of_birth)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     values = (
-        institution_code, record.get('full_name'), record.get('email_id'), record.get('contact_no'), record.get('gender')
+         student_reference_id,record.get('uploaded_file_id'),institution_code,admission_no,standardized_admission_date,student_class,section,stream,batch_year,date_of_birth
     )
     
     return master_insert_query, values, validation_errors
