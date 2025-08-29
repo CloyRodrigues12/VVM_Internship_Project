@@ -4,6 +4,7 @@ This module contains helper functions for validating and preparing student data 
 from datetime import datetime, date
 import re
 import difflib
+from collections import OrderedDict
 
 def validate_and_format_name(name_string):
     if not name_string or not str(name_string).strip():
@@ -59,62 +60,88 @@ OCCUPATION_STANDARDS = [
     'Businessman',
     'Engineer',
     'Doctor',
+    'Legal Professional',
     'Professor/Teacher',
+    'IT / Software Professional',
     'Government Servant',
+    'Defense / Law Enforcement',
     'Housewife/Homemaker',
-    'Private Sector'
+    'Private Sector',
+    'Skilled Worker / Tradesman',
+    'Farmer/Agriculture',
+    'Labourer',
+    'Retired',
+    'Student',
+    'Unemployed',
+    'NRI / Working Abroad',
+    'Other'  # A fallback category for un-mappable entries
 ]
 
 # Set a threshold for fuzzy matching (0.0 to 1.0)
 SIMILARITY_THRESHOLD = 0.8
 
+from collections import OrderedDict
+import re # Make sure 're' is imported
+
 def validate_and_standardize_occupation(occupation_string):
     """
-    Validates and standardizes an occupation string using fuzzy matching.
+    Robustly standardizes an occupation using a layered approach:
+    1. Prioritized keyword matching (using whole word matching).
+    2. Powerful fuzzy matching for typos.
+    3. Smart fallback to a cleaned, title-cased version of the original input.
     """
-    if not occupation_string or not str(occupation_string).strip():
-        # This function must consistently return a tuple for errors
-        return False, f"Invalid occupation: '{occupation_string}'. Occupation cannot be empty."
+    placeholders = {'NA', 'N/A', '-', '--'}
+    if not occupation_string or not str(occupation_string).strip() or str(occupation_string).strip().upper() in placeholders:
+        return None
 
-    cleaned_string = str(occupation_string).strip().lower()
+    cleaned_input = str(occupation_string).strip()
+    cleaned_lower = cleaned_input.lower()
 
-    if not all(c.isalnum() or c.isspace() or c in './-' for c in cleaned_string):
-        return False, f"Invalid occupation: '{occupation_string}'. Contains invalid characters."
+    if not all(c.isalnum() or c.isspace() or c in './-' for c in cleaned_lower):
+        return None
+
+    # --- Stage 1: Prioritized Keyword-based Matching (FIXED) ---
+    keyword_map = OrderedDict([
+        # Most specific phrases first
+        ('government servant', 'Government Servant'),
+        ('private service', 'Private Sector'),
+        ('self employed', 'Businessman'),
+        ('house wife', 'Housewife/Homemaker'),
+        ('home maker', 'Housewife/Homemaker'),
+        # General keywords
+        ('govt', 'Government Servant'),
+        ('army', 'Defense / Law Enforcement'), ('navy', 'Defense / Law Enforcement'), ('air force', 'Defense / Law Enforcement'), ('police', 'Defense / Law Enforcement'), ('defense', 'Defense / Law Enforcement'), ('military', 'Defense / Law Enforcement'),
+        ('housewife', 'Housewife/Homemaker'), ('homemaker', 'Housewife/Homemaker'),
+        ('business', 'Businessman'), ('shopkeeper', 'Businessman'),
+        ('teacher', 'Professor/Teacher'), ('professor', 'Professor/Teacher'),
+        ('doctor', 'Doctor'), ('engineer', 'Engineer'),
+        ('lawyer', 'Legal Professional'), ('advocate', 'Legal Professional'),
+        ('software', 'IT / Software Professional'), ('it', 'IT / Software Professional'),
+        ('developer', 'IT / Software Professional'), ('programmer', 'IT / Software Professional'),
+        ('private', 'Private Sector'), ('service', 'Private Sector')
+    ])
     
-    # Keyword-based matching
-    keyword_map = {
-        'private': 'Private Sector',
-        'housewife': 'Housewife/Homemaker',
-        'business': 'Businessman',
-        'engineer': 'Engineer',
-        'teacher': 'Professor/Teacher',
-        'professor': 'Professor/Teacher',
-        'doctor': 'Doctor',
-        'govt': 'Government Servant'
-    }
     for keyword, standard in keyword_map.items():
-        if keyword in cleaned_string:
+        # UPDATED LOGIC: Use regex word boundaries (\b) to match whole words/phrases only.
+        # This prevents 'it' from matching inside 'electrition'.
+        if re.search(r'\b' + re.escape(keyword) + r'\b', cleaned_lower):
             return standard
 
-    # --- CORRECTED FUZZY MATCHING LOGIC ---
-    # get_close_matches returns a list of strings, e.g., ['businessman']
+    # --- Stage 2: Powerful Fuzzy Matching ---
+    all_known_spellings = list(set([s.lower() for s in OCCUPATION_STANDARDS] + list(keyword_map.keys())))
     matches = difflib.get_close_matches(
-        cleaned_string, 
-        [s.lower() for s in OCCUPATION_STANDARDS], 
-        n=1, 
-        cutoff=SIMILARITY_THRESHOLD
+        cleaned_lower, all_known_spellings, n=1, cutoff=SIMILARITY_THRESHOLD
     )
-
-    # Check if the list of matches is not empty
     if matches:
-        best_match_lower = matches[0]
-        # Find the original properly-cased version from the standard list
+        matched_term = matches[0]
+        if matched_term in keyword_map: return keyword_map[matched_term]
         for standard_job in OCCUPATION_STANDARDS:
-            if standard_job.lower() == best_match_lower:
-                return standard_job
-    
-    # If no fuzzy match is found, return the cleaned, title-cased string
-    return " ".join(word.capitalize() for word in cleaned_string.split())
+            if standard_job.lower() == matched_term: return standard_job
+
+    # --- Stage 3: Smart Fallback ---
+    return cleaned_input.title()
+
+
 
 def _validate_and_prepare_student_sdcce(cursor, record, institution_code, master_table):
     """
@@ -427,7 +454,7 @@ def _validate_and_prepare_student_sdcce(cursor, record, institution_code, master
     # --- INSERT query and values tuple ---
     master_insert_query = f"""
         INSERT INTO {master_table} (
-            student_reference_id, institution_code, uploaded_file_id, admission_no, stream, pr_no, admission_date,
+            student_reference_id, institution_code, uploaded_file_id, admission_no, stream, pr_no,admission_scheme, admission_date,
             admission_feepayment_time, student_name, date_of_birth, full_address, gender, 
             student_category, religion, blood_group, email_address, city, state, pin_code, 
             mobile_number, alt_mobile_number, fathers_mobile_number, mothers_mobile_number, 
@@ -435,13 +462,13 @@ def _validate_and_prepare_student_sdcce(cursor, record, institution_code, master
             fathers_occupation_category, mothers_occupation_category, nationality, 
             name_of_the_institution_attended_earlier, board_name, passing_year, xii_stream,xii_max_marks,xii_marks_obtained,xii_sub_combination, passsing_percentage,xii_passing_class,pwd_category_and_Percentage,urban_rural_category
         ) VALUES (
-           %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+           %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s,%s
         )
     """
     values = (
         record.get('admission_transaction_number'), institution_code, record.get('uploaded_file_id'), form_number, record.get('programme_name'), 
-        record.get('enrollment_number'), admission_date, admission_feepayment_time, student_name, 
+        record.get('enrollment_number'),record.get('admission_scheme'), admission_date, admission_feepayment_time, student_name, 
         date_of_birth, full_address, record.get('gender'), standardized_admission_category, 
         standardized_religion, standardized_blood_group, standardized_email, city, state, pincode_str, 
         mobile, alternate_mobile, father_mobile, mother_mobile, father_name, mother_name, 
@@ -899,6 +926,98 @@ def _validate_and_prepare_student_rms(cursor, record, institution_code, master_t
     fathers_mobile_number = validate_and_clean_mobile_number(record.get('father_mobile_phone'))
     mothers_mobile_number = validate_and_clean_mobile_number(record.get('mother_mobile_phone'))
 
+    # --- Nationality Standardization ---
+    standardized_nationality = None
+    raw_nationality = record.get('nationality')
+
+    if not raw_nationality or not str(raw_nationality).strip():
+        validation_errors.append("Missing mandatory field: Nationality")
+    else:
+        cleaned_nationality = str(raw_nationality).strip()
+        
+        # We can now use a direct equality check since the input is clean.
+        if cleaned_nationality.upper() == 'INDIA':
+            standardized_nationality = 'Indian'
+        
+        # For all other countries, the logic remains the same.
+        else:
+            country_name = cleaned_nationality.split('(')[0].strip()
+            if country_name:
+                standardized_nationality = country_name.title()
+            else:
+                validation_errors.append(f"Invalid nationality format: '{raw_nationality}'")
+
+    # --- Previous Institution Name Standardization ---
+    institution_attended_earlier = None
+    raw_institution_name = None
+
+    # 1. Get the raw value from the correct column based on the institution_code.
+    if institution_code == 'RMS':
+        raw_institution_name = record.get('name_of_last_school_attended')
+    elif institution_code == 'VVA':
+        raw_institution_name = record.get('name_of_school_attended_earlier')
+
+    # 2. If a value was found, clean and standardize it.
+    if raw_institution_name and str(raw_institution_name).strip():
+        # Remove any extra leading/trailing spaces and convert to Title Case.
+        institution_attended_earlier = str(raw_institution_name).strip().title()
+
+    # If no value was found in the source data, institution_attended_earlier will correctly remain None.
+
+    # --- Percentage Standardization (Class X) ---
+    standardized_percentage_x = None
+    raw_percentage = None
+
+# --- Percentage Standardization (Class X only - More Robust) ---
+    standardized_percentage_x = None
+    raw_percentage = None
+
+    # 1. Get the raw value from the correct column based on the institution_code
+    if institution_code == 'RMS':
+        raw_percentage = record.get('percentage_obtained_std_x')
+    elif institution_code == 'VVA':
+        raw_percentage = record.get('percentage_class_x')
+
+    # 2. Only proceed if a value is provided
+    if raw_percentage is not None and str(raw_percentage).strip() != '':
+        
+        try:
+            # 3. Clean the input string to isolate the number
+            cleaned_string = str(raw_percentage).lower().replace('percent', '').replace('%', '').strip()
+            percentage_value = float(cleaned_string)
+            
+            # --- NEW "Wise" Logic to Handle Different Formats ---
+            
+            # A. If the number is between 0 and 1 (e.g., 0.75), assume it's a decimal representation.
+            if 0 < percentage_value <= 1:
+                percentage_value *= 100 # Convert 0.75 to 75.0
+            
+            # B. If the number is between 1 and 10, assume it's a CGPA/GPA score.
+            #    We'll convert it to an approximate percentage by multiplying by 10.
+            elif 1 < percentage_value <= 10:
+                percentage_value *= 10 # Convert 8.5 to 85.0
+            
+            # C. A value of 0 is just 0. We don't need to do anything.
+
+            # 4. Final validation: Check if the (potentially converted) value is in the 0-100 range.
+            if 0 <= percentage_value <= 100:
+                # 5. Standardize the final value to 2 decimal places
+                standardized_percentage_x = round(percentage_value, 2)
+            
+            # If the value is still outside the range (e.g., an input of 11), it will be invalid.
+
+        except (ValueError, TypeError):
+            # If conversion fails, it's considered invalid, and the value remains None.
+            pass
+
+
+    # --- Occupation Standardization (Optional) ---
+    father_occupation_category = None
+    mother_occupation_category = None
+
+    # We use the updated helper function which returns a valid occupation or None.
+    father_occupation_category = validate_and_standardize_occupation(record.get('father_occupation'))
+    mother_occupation_category = validate_and_standardize_occupation(record.get('mother_occupation'))
 
     # --- FINAL CHECK: Return all validation errors if any were found ---
     if validation_errors:
@@ -929,11 +1048,11 @@ def _validate_and_prepare_student_rms(cursor, record, institution_code, master_t
 
     # --- 5. Prepare the final INSERT query and values ---
     master_insert_query = f"""
-        INSERT INTO {master_table} (student_reference_id,uploaded_file_id,institution_code,admission_no,admission_date,class,section,stream,	batch_year,roll_number,date_of_birth,religion,blood_group,gender,student_category,student_name,fathers_name,mothers_name,email_address,full_address,state,city,pin_code,mobile_number,alt_mobile_number,fathers_mobile_number,mothers_mobile_number)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        INSERT INTO {master_table} (student_reference_id,uploaded_file_id,institution_code,admission_no,admission_date,class,section,stream,	batch_year,roll_number,date_of_birth,religion,blood_group,gender,student_category,student_name,fathers_name,mothers_name,email_address,full_address,state,city,pin_code,mobile_number,alt_mobile_number,fathers_mobile_number,mothers_mobile_number,nationality,mother_tongue,name_of_the_institution_attended_earlier,	passsing_percentage,fathers_occupation,mothers_occupation,fathers_occupation_category,mothers_occupation_category)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     values = (
-         student_reference_id,record.get('uploaded_file_id'),institution_code,admission_no,standardized_admission_date,student_class,section,stream,batch_year,validated_roll_number,date_of_birth,standardized_religion,standardized_blood_group,standardized_gender,standardized_student_category,full_name,father_full_name,mother_full_name,standardized_email,full_address,standardized_state,standardized_city,pincode,mobile_number,alt_mobile_number,fathers_mobile_number,mothers_mobile_number 
+         student_reference_id,record.get('uploaded_file_id'),institution_code,admission_no,standardized_admission_date,student_class,section,stream,batch_year,validated_roll_number,date_of_birth,standardized_religion,standardized_blood_group,standardized_gender,standardized_student_category,full_name,father_full_name,mother_full_name,standardized_email,full_address,standardized_state,standardized_city,pincode,mobile_number,alt_mobile_number,fathers_mobile_number,mothers_mobile_number,standardized_nationality,record.get('mother_tongue'),institution_attended_earlier,standardized_percentage_x,record.get('father_occupation'),record.get('mother_occupation'),father_occupation_category,mother_occupation_category
     )
     
     return master_insert_query, values, validation_errors
